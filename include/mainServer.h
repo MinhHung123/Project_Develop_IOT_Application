@@ -7,5 +7,6 @@
 #include "global.h"
 
 void setupSTAMode();
+void TaskWebServer(void *pvParameters);
 
 #endif // MAIN_SERVER_H

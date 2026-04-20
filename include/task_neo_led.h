@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Adafruit_NeoPixel.h>
+#include "global.h"
 
 #define NEOPIXEL_PIN 45
 #define LED_COUNT 1

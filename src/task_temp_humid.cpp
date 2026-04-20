@@ -24,6 +24,7 @@ void task_temp_humid(void *pvParameters) {
         Serial.print(" °C, Humidity: ");
         Serial.print(humid);
         Serial.println(" %");
+        xSemaphoreGive(xBinarySemaphoreTemp_Humi);
         vTaskDelay(2000); // Delay for 2 seconds before next reading
     }
 }
