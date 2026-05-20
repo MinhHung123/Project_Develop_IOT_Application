@@ -91,44 +91,67 @@ static void stopAPModeIfNeeded() {
 static String renderHomePage() {
     String html = "<!DOCTYPE html><html><head><meta charset='utf-8'>";
     html += "<meta name='viewport' content='width=device-width,initial-scale=1'>";
-    html += "<title>ESP32 Config Portal</title>";
+    html += "<title>ESP32 Smart Home Dashboard</title>";
     html += "<style>";
-    html += ":root{--bg:#f6f7fb;--card:#ffffff;--text:#1a1f2b;--muted:#64748b;--line:#dbe1ea;--primary:#0d6efd;--ok:#0f9d58;--warn:#b42318;}";
+    html += ":root{--bg:#07111f;--panel:rgba(10,18,33,.82);--panel-strong:rgba(16,26,48,.92);--text:#e5eefc;--muted:#9fb2cc;--line:rgba(148,163,184,.18);--primary:#4f8cff;--primary-2:#7c5cff;--accent:#22c55e;--accent-2:#f59e0b;--danger:#ef4444;--shadow:0 24px 80px rgba(3,7,18,.45);}";
     html += "*{box-sizing:border-box;}";
-    html += "body{font-family:'Segoe UI',Tahoma,sans-serif;margin:0;background:var(--bg);color:var(--text);padding:16px;}";
-    html += ".wrap{max-width:620px;margin:0 auto;}";
-    html += ".card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px 14px 14px;}";
-    html += "h1{font-size:20px;margin:0 0 10px;}";
-    html += "h2{font-size:16px;margin:14px 0 8px;}";
+    html += "body{font-family:'Segoe UI',Tahoma,sans-serif;margin:0;min-height:100vh;padding:18px;color:var(--text);background:radial-gradient(circle at top left,#1a2b5b 0,transparent 32%),radial-gradient(circle at right 15%,rgba(124,92,255,.18) 0,transparent 24%),linear-gradient(160deg,#050914 0%,#0a1324 45%,#08101d 100%);position:relative;overflow-x:hidden;}";
+    html += "body:before,body:after{content:'';position:fixed;inset:auto;border-radius:999px;filter:blur(18px);opacity:.55;pointer-events:none;animation:float 12s ease-in-out infinite;}";
+    html += "body:before{width:240px;height:240px;top:-70px;left:-60px;background:rgba(79,140,255,.22);}";
+    html += "body:after{width:180px;height:180px;right:-40px;bottom:120px;background:rgba(34,197,94,.16);animation-delay:-4s;}";
+    html += ".wrap{max-width:980px;margin:0 auto;position:relative;z-index:1;}";
+    html += ".hero{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:16px;padding:18px 20px;background:linear-gradient(135deg,rgba(79,140,255,.18),rgba(124,92,255,.12));border:1px solid rgba(148,163,184,.18);border-radius:22px;box-shadow:var(--shadow);backdrop-filter:blur(14px);animation:fadeUp .7s ease both;}";
+    html += ".hero h1{font-size:28px;line-height:1.05;margin:0 0 8px;letter-spacing:-.03em;}";
+    html += ".hero p{margin:0;color:var(--muted);max-width:56ch;}";
+    html += ".hero-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#d7e4fb;}";
+    html += ".hero-badge i{width:9px;height:9px;border-radius:50%;background:linear-gradient(135deg,#22c55e,#4ade80);box-shadow:0 0 0 0 rgba(34,197,94,.5);animation:pulse 2s infinite;}";
+    html += ".grid{display:grid;grid-template-columns:1.15fr .85fr;gap:16px;}";
+    html += ".side-panel{display:flex;flex-direction:column;gap:16px;}";
+    html += ".quick-panel{background:linear-gradient(160deg,rgba(124,92,255,.18),rgba(34,197,94,.10));border:1px solid rgba(148,163,184,.16);border-radius:20px;padding:18px;box-shadow:var(--shadow);backdrop-filter:blur(16px);animation:fadeUp .9s ease both;}";
+    html += ".quick-panel h3{margin:0 0 12px;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:#dbeafe;}";
+    html += ".quick-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-top:1px solid rgba(148,163,184,.12);}";
+    html += ".quick-item:first-of-type{border-top:none;padding-top:0;}";
+    html += ".quick-item span{color:var(--muted);font-size:13px;}";
+    html += ".quick-item strong{color:#f8fbff;font-size:14px;}";
+    html += ".card{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:18px 18px 16px;box-shadow:var(--shadow);backdrop-filter:blur(16px);animation:fadeUp .8s ease both;}";
+    html += ".card:hover{transform:translateY(-1px);border-color:rgba(79,140,255,.28);}";
+    html += "h2{font-size:15px;margin:0 0 12px;letter-spacing:.02em;text-transform:uppercase;color:#dbeafe;}";
     html += "p{margin:8px 0;color:var(--muted);}";
     html += ".status{display:inline-block;font-size:12px;font-weight:600;padding:3px 8px;border-radius:999px;color:#fff;}";
-    html += ".ok{background:var(--ok);}";
-    html += ".warn{background:var(--warn);}";
-    html += ".section{padding-top:8px;margin-top:10px;border-top:1px solid var(--line);}";
-    html += "label{display:block;font-size:13px;font-weight:600;color:#334155;margin:8px 0 4px;}";
-    html += "input,select,button{width:100%;padding:9px 10px;border-radius:8px;border:1px solid var(--line);font-size:14px;}";
-    html += "input,select{background:#fff;}";
-    html += "button{background:var(--primary);color:#fff;border:none;font-weight:600;cursor:pointer;margin-top:8px;}";
-    html += "button.ghost{background:#fff;color:var(--text);border:1px solid var(--line);}";
+    html += ".ok{background:linear-gradient(135deg,#16a34a,#22c55e);}";
+    html += ".warn{background:linear-gradient(135deg,#dc2626,#f43f5e);}";
+    html += ".section{padding-top:12px;margin-top:14px;border-top:1px solid var(--line);}";
+    html += "label{display:block;font-size:12px;font-weight:700;color:#cbd5e1;margin:8px 0 6px;letter-spacing:.04em;text-transform:uppercase;}";
+    html += "input,select,button{width:100%;padding:12px 12px;border-radius:12px;border:1px solid rgba(148,163,184,.18);font-size:14px;transition:all .2s ease;}";
+    html += "input,select{background:rgba(255,255,255,.06);color:var(--text);outline:none;}";
+    html += "input::placeholder{color:#7e8fa8;}";
+    html += "input:focus,select:focus{border-color:rgba(79,140,255,.55);box-shadow:0 0 0 4px rgba(79,140,255,.14);}";
+    html += "button{background:linear-gradient(135deg,var(--primary),var(--primary-2));color:#fff;border:none;font-weight:700;cursor:pointer;margin-top:10px;box-shadow:0 14px 30px rgba(79,140,255,.22);}";
+    html += "button:hover{transform:translateY(-1px);filter:saturate(1.08);}";
+    html += "button.ghost{background:rgba(255,255,255,.04);color:var(--text);border:1px solid rgba(148,163,184,.18);box-shadow:none;}";
     html += ".row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}";
-    html += ".fan-box{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px;}";
-    html += ".fan-value{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px;font-size:13px;color:var(--muted);}";
-    html += "input[type='range']{padding:0;height:42px;accent-color:var(--primary);}";
-    html += ".door-box{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px;}";
-    html += ".door-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}";
+    html += ".fan-box,.door-box,.chart-box,.stat{background:var(--panel-strong);border:1px solid rgba(148,163,184,.16);border-radius:16px;padding:14px;}";
+    html += ".fan-value{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;font-size:13px;color:var(--muted);}";
+    html += "input[type='range']{padding:0;height:42px;accent-color:#7c5cff;background:transparent;}";
+    html += ".door-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}";
     html += ".door-state{font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;color:#fff;}";
-    html += ".door-open{background:#0f9d58;}";
-    html += ".door-closed{background:#b42318;}";
+    html += ".door-open{background:linear-gradient(135deg,#16a34a,#22c55e);}";
+    html += ".door-closed{background:linear-gradient(135deg,#dc2626,#ef4444);}";
     html += ".stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:10px;}";
-    html += ".stat{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px;}";
-    html += ".stat small{display:block;color:var(--muted);font-size:12px;}";
-    html += ".stat strong{font-size:18px;color:#0f172a;}";
-    html += ".chart-box{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:8px;}";
-    html += "canvas{display:block;width:100%;height:200px;}";
-    html += ".hint{font-size:12px;color:var(--muted);margin-top:10px;}";
+    html += ".stat small{display:block;color:var(--muted);font-size:12px;margin-bottom:4px;}";
+    html += ".stat strong{font-size:22px;color:#f8fbff;letter-spacing:-.02em;}";
+    html += ".stat:nth-child(1){background:linear-gradient(135deg,rgba(239,68,68,.16),rgba(16,24,40,.88));}";
+    html += ".stat:nth-child(2){background:linear-gradient(135deg,rgba(13,110,253,.16),rgba(16,24,40,.88));}";
+    html += ".chart-box{padding:12px;}";
+    html += "canvas{display:block;width:100%;height:220px;}";
+    html += ".hint{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.5;}";
+    html += "@keyframes float{0%,100%{transform:translate3d(0,0,0) scale(1);}50%{transform:translate3d(0,-12px,0) scale(1.04);}}";
+    html += "@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}";
+    html += "@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,197,94,.45);}70%{box-shadow:0 0 0 12px rgba(34,197,94,0);}100%{box-shadow:0 0 0 0 rgba(34,197,94,0);}}";
+    html += "@media(max-width:860px){.grid{grid-template-columns:1fr;}.hero{flex-direction:column;align-items:flex-start;}}";
     html += "@media(max-width:560px){.row{grid-template-columns:1fr;}}";
     html += "</style></head><body><div class='wrap'><div class='card'>";
-    html += "<h1>ESP32 Config Portal</h1>";
+    html += "<div class='hero'><div><div class='hero-badge'><i></i> Live Dashboard</div><h1>ESP32 Smart Home Dashboard</h1><p>Monitor WiFi, fan, door, temperature, and humidity from one polished control panel.</p></div><div class='hero-badge'>Ready for control</div></div>";
     html += "<script>";
     html += "async function syncFanState(){";
     html += "try{";
@@ -204,7 +227,8 @@ static String renderHomePage() {
     html += "window.addEventListener('DOMContentLoaded',()=>{syncFanState();syncSensorState();syncDoorState();setInterval(syncFanState,1000);setInterval(syncSensorState,2000);setInterval(syncDoorState,1000);});";
     html += "</script>";
 
-    html += "<p><b>WiFi:</b> ";
+    html += "<div class='grid'><div>";
+    html += "<p><b>WiFi Status:</b> ";
     if (WiFi.status() == WL_CONNECTED) {
         html += "<span class='status ok'>Connected</span> ";
         html += WiFi.SSID() + " (" + WiFi.localIP().toString() + ")";
@@ -213,14 +237,14 @@ static String renderHomePage() {
     }
     html += "</p>";
 
-    html += "<div class='section'><h2>Configure WiFi for ESP</h2>";
+    html += "<div class='section'><h2>WiFi Setup</h2>";
     html += "<form method='POST' action='/wifi'>";
-    html += "<label>WiFi SSID</label>";
-    html += "<input name='ssid' placeholder='WiFi SSID' value='" + wifi_ssid + "' required>";
-    html += "<label>WiFi Password</label>";
-    html += "<input name='password' type='password' placeholder='WiFi Password'>";
-    html += "<button type='submit'>Save and Connect</button></form>";
-    html += "<form method='GET' action='/retry'><button class='ghost' type='submit'>Retry WiFi Connection</button></form></div>";
+    html += "<label>Network Name (SSID)</label>";
+    html += "<input name='ssid' placeholder='Enter WiFi SSID' value='" + wifi_ssid + "' required>";
+    html += "<label>Password</label>";
+    html += "<input name='password' type='password' placeholder='Enter WiFi password'>";
+    html += "<button type='submit'>Save & Connect</button></form>";
+    html += "<form method='GET' action='/retry'><button class='ghost' type='submit'>Retry Connection</button></form></div>";
 
     html += "<div class='section'><h2>Fan Control</h2>";
     html += "<form method='GET' action='/fan'>";
@@ -240,7 +264,7 @@ static String renderHomePage() {
     html += "</div>";
     html += "<button type='submit'><span id='doorActionLabel'>" + String(pos_servo > 0 ? "Close Door" : "Open Door") + "</span></button></form></div>";
 
-    html += "<div class='section'><h2>Temperature and Humidity Over Time</h2>";
+    html += "<div class='section'><h2>Temperature & Humidity</h2>";
     html += "<div class='stats'>";
     html += "<div class='stat'><small>Current Temperature (C)</small><strong><span id='tempValue'>" + String(glob_temperature, 1) + "</span></strong></div>";
     html += "<div class='stat'><small>Current Humidity (%)</small><strong><span id='humidValue'>" + String(glob_humidity, 1) + "</span></strong></div>";
@@ -248,8 +272,17 @@ static String renderHomePage() {
     html += "<div class='chart-box'><canvas id='sensorChart'></canvas></div>";
     html += "</div>";
 
-    html += "<p class='hint'>If connection is lost, ESP will start a config AP for setup again.</p>";
-    html += "</div></div></body></html>";
+    html += "<p class='hint'>If the connection is lost, the ESP will automatically start a configuration access point again.</p>";
+    html += "</div><div class='side-panel'><div class='quick-panel'><h3>System Snapshot</h3>";
+    html += "<div class='quick-item'><span>WiFi Mode</span><strong>AP + STA</strong></div>";
+    html += "<div class='quick-item'><span>Fan Control</span><strong>Live Slider</strong></div>";
+    html += "<div class='quick-item'><span>Door Control</span><strong>Toggle Action</strong></div>";
+    html += "<div class='quick-item'><span>Sensor Updates</span><strong>Auto Refresh</strong></div>";
+    html += "</div><div class='quick-panel'><h3>Visual Theme</h3>";
+    html += "<div class='quick-item'><span>Primary Accent</span><strong>Blue / Violet</strong></div>";
+    html += "<div class='quick-item'><span>Status Colors</span><strong>Green / Red</strong></div>";
+    html += "<div class='quick-item'><span>Layout Style</span><strong>Glass Dashboard</strong></div>";
+    html += "</div></div></div></body></html>";
     return html;
 }
 
