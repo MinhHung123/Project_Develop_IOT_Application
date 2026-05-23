@@ -1,0 +1,79 @@
+DHT Anomaly Classifier -- Phase B metrics
+=========================================
+
+Environment
+-----------
+TensorFlow:           2.21.0
+Keras:                3.14.1
+Random seed:          42
+
+Dataset
+-------
+Source CSV:           dataset/dht_anomaly_dataset.csv
+Total samples:        3160
+Train / Test split:   80% / 20%, stratified
+Train size:           2528
+Test  size:           632
+
+Class distribution (test set)
+-----------------------------
+test size: 632
+  0 NORMAL  :  301 ( 47.6%)
+  1 WARNING :  172 ( 27.2%)
+  2 CRITICAL:  159 ( 25.2%)
+
+Model
+-----
+Topology:             Input(2) -> Normalization -> Dense(16, ReLU)
+                      -> Dense(8, ReLU) -> Dense(3, softmax)
+Total params:         216
+Optimizer:            Adam(lr=1e-3)
+Loss:                 sparse_categorical_crossentropy
+Batch size:           32
+Max epochs:           100
+EarlyStopping:        monitor=val_loss, patience=5, restore_best_weights=True
+Epochs actually run:  100
+
+Training results
+----------------
+Final train accuracy: 0.9916
+Final val   accuracy: 0.9816
+
+Test results (Keras float model)
+--------------------------------
+Test loss:            0.0250
+Test accuracy:        0.9953
+Macro F1:             0.9945
+
+Classification report (Keras float model)
+-----------------------------------------
+              precision    recall  f1-score   support
+
+      NORMAL     1.0000    0.9967    0.9983       301
+     WARNING     0.9829    1.0000    0.9914       172
+    CRITICAL     1.0000    0.9874    0.9937       159
+
+    accuracy                         0.9953       632
+   macro avg     0.9943    0.9947    0.9945       632
+weighted avg     0.9953    0.9953    0.9953       632
+
+Confusion matrix (rows = true, columns = predicted):
+          NORMAL WARNING CRITICAL
+  NORMAL    300     1     0
+  WARNING     0   172     0
+  CRITICAL    0     2   157
+
+TFLite model
+------------
+Quantization:         Dynamic range (weights int8, activations float32)
+Size:                 3972 bytes (3.88 KB)
+Test accuracy:        0.9953
+Agreement vs Keras:   1.0000
+
+C header
+--------
+Path:                 include/ml_model/dht_classifier_model.h
+File size:            25985 bytes (25.38 KB)
+Array symbol:         dht_classifier_model_tflite
+Length symbol:        dht_classifier_model_tflite_len
+Alignment:            16-byte (alignas(16))
