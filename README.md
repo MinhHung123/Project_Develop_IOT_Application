@@ -1,619 +1,440 @@
-# YoloUNO IoT Platform Project - Hệ Thống Nhà Thông Minh
+# Smart Home trên YoloUNO — BTL Phát triển ứng dụng IoT (CO3037)
 
-Dự án IoT hoàn chỉnh sử dụng **ESP32-S3 (YoloUNO)** để kết nối với **CoreIOT** qua MQTT, điều khiển LED, đọc cảm biến nhiệt độ/độ ẩm, và nhận lệnh RPC từ server.
+Hệ thống nhà thông minh chạy trên kit **YoloUNO (ESP32-S3)**, hiện thực 7 task FreeRTOS:
+giám sát môi trường, điều khiển thiết bị tại chỗ, cấu hình WiFi qua trang web, suy luận
+TinyML on-device, đẩy telemetry lên CoreIOT Cloud và điều khiển ngược qua MQTT RPC.
 
----
-
-## 💡 Ý Tưởng Nhà Thông Minh (Smart Home Concept)
-
-### 🎯 Tầm Nhìn Chung
-
-Dự án này xây dựng một **hệ thống nhà thông minh tích hợp** cho phép:
-
-- **Giám sát môi trường**: Đọc nhiệt độ và độ ẩm từ cảm biến DHT20 theo thời gian thực
-- **Điều khiển thiết bị từ xa**: Quản lý quạt, cửa, và đèn thông qua Cloud (CoreIOT)
-- **Tự động hóa thông minh**: Thiết bị tự động phản ứng dựa trên các điều kiện môi trường
-- **Giám sát trực tiếp**: LED NeoPixel hiển thị trạng thái độ ẩm theo màu sắc
-
-### 🏠 Kịch Bản Sử Dụng
-
-#### Scenario 1: Điều Khiển Độ Ẩm Tự Động
-```
-Người dùng muốn duy trì độ ẩm phòng ở mức lý tưởng (30-60%)
-    ↓
-Cảm biến DHT20 đọc độ ẩm mỗi 2 giây
-    ↓
-Nếu độ ẩm > 60% → LED bật màu ĐỎ + Quạt bật để làm khô phòng
-Nếu độ ẩm 30-60% → LED bật màu XANH LỤC (Tối ưu)
-Nếu độ ẩm < 30% → LED bật màu XANH (Quá khô)
-```
-
-#### Scenario 2: Điều Khiển Từ Xa Qua Cloud
-```
-Người dùng → CoreIOT Dashboard → MQTT RPC Command
-    ↓
-ESP32 nhận lệnh (setFan, setDoor, setColor)
-    ↓
-Thực thi lệnh → Quạt, Cửa, LED thay đổi
-    ↓
-Gửi lại trạng thái hiện tại cho Cloud
-```
-
-#### Scenario 3: Cảnh Báo Thông Minh
-```
-Nếu phát hiện bất thường:
-- Độ ẩm quá cao (>80%) → LED nhấp nháy ĐỎ
-- Nhiệt độ quá cao (>35°C) → Gửi cảnh báo cho Cloud
-- Quạt không hoạt động → Tự động thử khởi động lại
-```
-
-### 🔄 Luồng Dữ Liệu Hệ Thống
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    CoreIOT Cloud Server                      │
-│          (MQTT Broker - app.coreiot.io:1883)                │
-└────────┬─────────────────────────────────────┬──────────────┘
-         │                                      │
-         │ RPC Commands                         │ Telemetry Data
-         │ (setFan, setDoor, setColor)          │ (temp, humidity, fan_speed)
-         │                                      │
-    ┌────▼──────────────────────────────────────▼────┐
-    │           ESP32-S3 (YoloUNO Device)            │
-    │                                                 │
-    │  ┌──────────────┐  ┌──────────────┐           │
-    │  │  DHT20       │  │  NeoPixel    │           │
-    │  │  Sensor      │  │  LED         │           │
-    │  │  (I2C)       │  │  (GPIO48)    │           │
-    │  └──────────────┘  └──────────────┘           │
-    │                                                 │
-    │  ┌──────────────┐  ┌──────────────┐           │
-    │  │  PWM Fan     │  │  Servo Door  │           │
-    │  │  (GPIO10)    │  │  (GPIO5)     │           │
-    │  └──────────────┘  └──────────────┘           │
-    │                                                 │
-    │  ┌──────────────────────────────────┐         │
-    │  │   FreeRTOS Task Manager          │         │
-    │  │  - TempHumidTask (Priority 1)    │         │
-    │  │  - LED Control (Priority 2)      │         │
-    │  │  - CoreIOT Task (Priority 3)     │         │
-    │  └──────────────────────────────────┘         │
-    └─────────────────────────────────────────────────┘
-```
-
-### 🎨 Trạng Thái Màu LED (Color Mapping)
-
-| Độ Ẩm (%) | Màu | Ý Nghĩa | Hành Động |
-|-----------|-----|--------|----------|
-| 0-30% | 🔵 BLUE | DRY - Quá khô | Có thể bật máy tăm ẩm |
-| 30-60% | 🟢 GREEN | NORMAL - Tối ưu | Duy trì trạng thái hiện tại |
-| 60-100% | 🔴 RED | HUMID - Quá ẩm | Bật quạt để làm khô |
-| ERROR | ⚪ WHITE | Lỗi cảm biến | Kiểm tra kết nối cảm biến |
-
-## 📋 Tính Năng Chính
-
-✅ **Kết nối WiFi Station Mode** - Tự động kết nối đến WiFi network  
-✅ **Cảm biến DHT20** - Đọc nhiệt độ và độ ẩm qua I2C  
-✅ **Điều khiển LED NeoPixel** - Hiển thị trạng thái độ ẩm theo màu sắc  
-✅ **MQTT CoreIOT Integration** - Gửi/nhận dữ liệu với cloud  
-✅ **RPC Command Processing** - Nhận và xử lý lệnh từ server (quạt, cửa, đèn)  
-✅ **Multi-tasking với FreeRTOS** - 4 tasks chạy song song  
-✅ **Semaphore Synchronization** - Bảo vệ dữ liệu chia sẻ giữa các tasks  
-
-## 🔧 Phần Cứng
-
-- **Board**: YoloUNO (ESP32-S3)
-- **Cảm biến**: DHT20 (I2C - SDA: GPIO11, SCL: GPIO12)
-- **Đầu ra**: 
-  - LED NeoPixel (GPIO48)
-  - PWM Fan (GPIO10) - Quạt thông gió
-  - Servo Motor (GPIO5) - Cửa tự động
-- **Kết nối**: WiFi 2.4GHz, MQTT
-
-## 📦 Thư Viện Sử Dụng
-
-```
-- ArduinoJson (JSON parsing)
-- PubSubClient@2.8.0 (MQTT client)
-- Thingsboard@0.13.0 (CoreIOT integration)
-- ArduinoHttpClient (HTTP client)
-- DHT20 (Temperature/Humidity sensor)
-- Adafruit NeoPixel @ ^1.15.4 (LED control)
-- ESP32Servo @ ^1.1.8 (Servo motor control)
-```
-
-## 🚀 Quy Trình Khởi Động
-
-1. **Serial Communication** - 115200 baud
-2. **WiFi Setup** - Kết nối với SSID/Password từ global.cpp
-3. **I2C Initialization** - Chuẩn bị đọc DHT20
-4. **FreeRTOS Tasks khởi động**:
-   - `TempHumidTask` (Priority 1) - Đọc cảm biến mỗi 2 giây
-   - `LED Control Task` (Priority 2) - Cập nhật LED mỗi 500ms
-   - `CoreIOT Task` (Priority 3) - Kết nối MQTT & xử lý RPC
+**Môn:** Phát triển ứng dụng IoT (CO3037) — HCMUT, Khoa KH&KTMT
+**GVHD:** TS. Lê Trọng Nhân
+**Nhóm:** Thạch Minh Hưng (2311357), Nguyễn Lê Khôi Nguyên (2312366)
 
 ---
 
-## 🔗 Rule Chain - Giao Tiếp Giữa 2 Thiết Bị (Device Communication)
+## 1. Tổng quan hệ thống
 
-### 📌 Khái Niệm Rule Chain
+### Mục tiêu
 
-**Rule Chain** là một hệ thống quy tắc tự động cho phép 2 hoặc nhiều thiết bị giao tiếp với nhau thông qua Cloud (CoreIOT), tạo ra các hành động liên động dựa trên điều kiện đã định.
+Mở rộng `nhanksd85/YoloUNO_PlatformIO @ RTOS_Project` thành một hệ thống smart home đầy
+đủ pipeline: cảm biến → xử lý cục bộ (kể cả ML) → hiển thị → cloud → điều khiển ngược.
+Mức khác base ≥ 30%.
 
-Thay vì mỗi thiết bị hoạt động độc lập, Rule Chain cho phép:
-- **Device A** gửi dữ liệu lên Cloud (ví dụ: độ ẩm)
-- **Cloud** xử lý quy tắc và quyết định
-- **Device B** nhận lệnh từ Cloud để thực thi (ví dụ: bật đèn)
+### 7 task chính (theo đề bài)
 
-### 🎯 Ví Dụ Thực Tế: Humidity-Triggered LED
+| # | Task                          | File                                       | Đề bài yêu cầu                                                   |
+|---|-------------------------------|--------------------------------------------|------------------------------------------------------------------|
+| 1 | LED blink theo nhiệt độ       | `task_led_blink.{h,cpp}`                   | ≥3 behaviors theo dải nhiệt, đồng bộ bằng semaphore              |
+| 2 | NeoPixel theo độ ẩm           | `task_neo_led.{h,cpp}`                     | ≥3 mức màu theo humidity, semaphore                              |
+| 3 | LCD hiển thị temp+humid       | `task_lcd.{h,cpp}`                         | ≥3 trạng thái, không dùng global var, dùng semaphore             |
+| 4 | Web server AP mode            | `mainServer.{h,cpp}`                       | UI redesign, ≥2 device control, chế độ AP+STA thông minh         |
+| 5 | TinyML anomaly detection      | `task_tinyml.{h,cpp}` + `ml_model/`        | Train + deploy model 3-class, đánh giá accuracy trên HW          |
+| 6 | CoreIOT publish (MQTT)        | `task_coreIOT.{h,cpp}`                     | STA mode, publish telemetry                                      |
+| 7 | Rule Chain trên CoreIOT       | (cấu hình trên Cloud, không phải code)    | Master + Slave chain, telemetry → RPC                            |
 
-#### Kịch Bản
-```
-Một nhà có 2 thiết bị YoloUNO:
-- Thiết bị 1 (Phòng khách): Chứa cảm biến DHT20 để đọc độ ẩm
-- Thiết bị 2 (Phòng ngủ): Chứa LED để cảnh báo
-```
+### Phân công
 
-#### Luồng Giao Tiếp
+| Thành viên                | MSSV    | Tasks                                |
+|---------------------------|---------|--------------------------------------|
+| Thạch Minh Hưng           | 2311357 | Task 2, 4, 6, 7                      |
+| Nguyễn Lê Khôi Nguyên     | 2312366 | Task 1, 3, 5                         |
 
-```
-TIME: 00:00:00
+---
 
-┌──────────────────────────────┐
-│    Thiết Bị 1: Phòng Khách   │
-│         (YoloUNO #1)         │
-└────────────┬─────────────────┘
-             │
-             │ 1. Đọc cảm biến DHT20
-             │    Humidity = 65%
-             │
-             ▼
-    ┌────────────────────┐
-    │   Publish MQTT     │
-    │ Topic: telemetry   │
-    │ Payload:           │
-    │ {humidity: 65}     │
-    └────────┬───────────┘
-             │
-             │ 2. Gửi lên CoreIOT Cloud
-             │    via MQTT:1883
-             │
-             ▼
-    ┌──────────────────────────────────┐
-    │      CoreIOT Cloud Server        │
-    │    (Rule Engine Processing)      │
-    │                                  │
-    │  Rule: IF humidity > 60% THEN    │
-    │        SET device2.led = ON      │
-    │        SET device2.color = RED   │
-    └────────┬─────────────────────────┘
-             │
-             │ 3. Gửi RPC Command
-             │    Tới Thiết Bị 2
-             │
-             ▼
-┌──────────────────────────────┐
-│   Thiết Bị 2: Phòng Ngủ      │
-│        (YoloUNO #2)          │
-│                              │
-│ 4. Nhận RPC Command:         │
-│    {method: "setColor",      │
-│     params: {r:255, g:0, b:0}} │
-│                              │
-│ 5. Thực thi hành động:       │
-│    - Bật LED màu ĐỎ         │
-│    - In log: "LED ON - RED"  │
-└──────────────────────────────┘
-```
+## 2. Phần cứng
 
-### 📋 Chi Tiết Quy Tắc (Rule Details)
+| Thành phần                     | Pin / Địa chỉ                       | Chú thích                          |
+|--------------------------------|-------------------------------------|------------------------------------|
+| Board YoloUNO (ESP32-S3)       | —                                   | Dual-core Xtensa LX7 240 MHz       |
+| I2C bus                        | SDA = **GPIO 11**, SCL = **GPIO 12** | Dùng chung DHT20 + LCD              |
+| DHT20 (nhiệt độ + độ ẩm)       | I2C @ 0x38                          | Đọc mỗi 2 s                        |
+| LCD I2C 16×2 (HD44780+PCF8574) | I2C @ **0x21**                      | KHÔNG phải 0x27                    |
+| LED đơn (on-board)             | **GPIO 48**                         | Active HIGH                        |
+| NeoPixel WS2812                | **GPIO 45**                         | 1 LED RGB                          |
+| Servo cửa                      | **GPIO 5**                          | `DOOR_SERVO_PIN`                   |
+| Quạt DC                        | **GPIO 10**                         | `FAN_PIN`, PWM qua `analogWrite`   |
+| Button                         | **GPIO 8** (BTN1), **GPIO 9** (BTN2)| INPUT_PULLUP, active-low           |
 
-#### Rule 1: Humidity High Detection
-| Thành Phần | Giá Trị |
-|-----------|--------|
-| **Trigger** | Độ ẩm từ Device 1 > 60% |
-| **Condition** | `humidity >= 60 AND humidity <= 100` |
-| **Action** | Gửi lệnh tới Device 2 |
-| **Command** | `setColor(255, 0, 0)` - Màu ĐỎ |
-| **Delay** | 0 (ngay lập tức) |
+---
 
-#### Rule 2: Humidity Normal Range
-| Thành Phần | Giá Trị |
-|-----------|--------|
-| **Trigger** | Độ ẩm từ Device 1 = 30-60% |
-| **Condition** | `humidity > 30 AND humidity < 60` |
-| **Action** | Gửi lệnh tới Device 2 |
-| **Command** | `setColor(0, 255, 0)` - Màu XANH LỤC |
-| **Delay** | 0 |
+## 3. Kiến trúc phần mềm
 
-#### Rule 3: Humidity Low Alert
-| Thành Phần | Giá Trị |
-|-----------|--------|
-| **Trigger** | Độ ẩm từ Device 1 < 30% |
-| **Condition** | `humidity < 30` |
-| **Action** | Gửi lệnh tới Device 2 |
-| **Command** | `setColor(0, 0, 255)` - Màu XANH |
-| **Delay** | 0 |
-
-### 🔄 Quá Trình Triển Khai Trong Code
-
-#### Thiết Bị 1: Gửi Dữ Liệu (Phòng Khách)
-
-```cpp
-// File: src/task_temp_humid.cpp
-// Mỗi 2 giây đọc cảm biến và publish lên MQTT
-
-void TaskTempHumid(void *pvParameters) {
-    while(1) {
-        // Đọc DHT20
-        float temperature = dht20.getTemperature();
-        float humidity = dht20.getHumidity();
-        
-        // Cập nhật global variable
-        xSemaphoreTake(xBinarySemaphoreTemp_Humi, pdMS_TO_TICKS(500));
-        glob_temperature = temperature;
-        glob_humidity = humidity;
-        xSemaphoreGive(xBinarySemaphoreTemp_Humi);
-        
-        // Publish lên Cloud
-        publishSensor(temperature, humidity, fan_speed);
-        
-        Serial.printf("Humidity: %.2f%% -> Sending to Cloud\n", humidity);
-        
-        vTaskDelay(pdMS_TO_TICKS(2000));
-    }
-}
-```
-
-**Output Console:**
-```
-Humidity: 65.30% -> Sending to Cloud
-Published: {"humidity":65.30,"temperature":22.50,"fan_speed":50}
-```
-
-#### Cloud Processing (CoreIOT Rule Engine)
-
-CoreIOT nhận dữ liệu từ Device 1 qua MQTT topic:
-```
-Topic: v1/devices/me/telemetry
-Payload: {"humidity": 65.30}
-```
-
-**Rule Engine xử lý:**
-```
-IF topic == "v1/devices/me/telemetry" 
-AND payload.humidity > 60
-THEN:
-  1. Gửi RPC command tới device2
-  2. Method: "setColor"
-  3. Params: {r: 255, g: 0, b: 0}
-```
-
-#### Thiết Bị 2: Nhận Lệnh & Thực Thi (Phòng Ngủ)
-
-```cpp
-// File: src/task_coreIOT.cpp
-// Hàm callback MQTT nhận RPC commands
-
-void callback(char* topic, byte* payload, unsigned int length) {
-    // Parse MQTT message
-    JsonDocument doc;
-    deserializeJson(doc, payload);
-    
-    String method = doc["method"];
-    
-    // Xử lý lệnh setColor từ Rule Chain
-    if (method == "setColor") {
-        uint8_t r = doc["params"]["r"];
-        uint8_t g = doc["params"]["g"];
-        uint8_t b = doc["params"]["b"];
-        
-        // Đặt LED thành màu chỉ định
-        setNeoPixelColor(r, g, b);
-        
-        Serial.printf("LED ON - Color: R:%d G:%d B:%d\n", r, g, b);
-    }
-}
-
-// Hàm đặt màu LED NeoPixel
-void setNeoPixelColor(uint8_t r, uint8_t g, uint8_t b) {
-    pixel.setPixelColor(0, pixel.Color(r, g, b));
-    pixel.show();
-}
-```
-
-**Output Console (Device 2):**
-```
-Message arrived [v1/devices/me/rpc/request/1]
-{"method":"setColor","params":{"r":255,"g":0,"b":0}}
-LED ON - Color: R:255 G:0 B:0
-```
-
-### 🎨 Bảng Quy Tắc Hoàn Chỉnh
+### 3.1 Sơ đồ task FreeRTOS
 
 ```
-Độ Ẩm Device 1    │   Trigger Rule   │   RPC Command (Device 2)  │  Kết Quả LED
-─────────────────┼──────────────────┼───────────────────────────┼────────────────
-   < 30%         │  Quá khô         │  setColor(0, 0, 255)      │  LED XANH
-   30-60%        │  Tối ưu          │  setColor(0, 255, 0)      │  LED XANH LỤC
-   > 60%         │  Quá ẩm          │  setColor(255, 0, 0)      │  LED ĐỎ
-   ERROR/NaN     │  Lỗi cảm biến    │  setColor(255, 255, 255)  │  LED TRẮNG (Warning)
+┌────────────────────────────────────────────────────────────────┐
+│                       ESP32-S3 (YoloUNO)                       │
+│                                                                │
+│  ┌─────────────────┐   sensor_write()   ┌──────────────────┐  │
+│  │ task_temp_humid │ ─────────────────► │  SensorData      │  │
+│  │  (prio = 2)     │                    │  + xMutexSensor  │  │
+│  │  DHT20 @ 2 Hz   │                    │  Data (mutex)    │  │
+│  └────────┬────────┘                    └────────┬─────────┘  │
+│           │                                       │            │
+│           │ xSemaphoreGive() x4                   │ sensor_    │
+│           │ (separate sem per consumer)           │ read()     │
+│           ▼                                       │            │
+│  ┌────────────────┐  ┌────────────────┐  ┌──────▼──────────┐  │
+│  │ xSem_Led       │  │ xSem_Lcd       │  │ xSem_TinyML     │  │
+│  └───────┬────────┘  └───────┬────────┘  └───────┬─────────┘  │
+│          ▼                   ▼                   ▼            │
+│  ┌────────────────┐  ┌────────────────┐  ┌─────────────────┐  │
+│  │ task_led_blink │  │ task_lcd_      │  │ task_tinyml_    │  │
+│  │  (prio = 1)    │  │ display        │  │ inference       │  │
+│  │  GPIO 48       │  │ LCD I2C 0x21   │  │ TFLite Micro    │  │
+│  └────────────────┘  └────────────────┘  └────────┬────────┘  │
+│                                                    │           │
+│           ┌────────────────┐                       │ writes    │
+│           │ xSem_Temp_Humi │ ─► TaskNEOLED         │ globs     │
+│           └────────────────┘    GPIO 45            ▼           │
+│                                                                │
+│  ┌──────────────────┐  ┌───────────────┐  ┌─────────────────┐ │
+│  │ TaskWebServer    │  │ TaskCoreIOT   │  │ task_button     │ │
+│  │ AP+STA, port 80  │  │ MQTT publish  │  │ BTN1, BTN2      │ │
+│  │ /, /wifi, /fan,  │  │ + RPC callback│  │ debounce 30 ms  │ │
+│  │ /door, /sensor-  │  │ FAN_PIN,      │  │ toggle fan      │ │
+│  │ state            │  │ DOOR_SERVO    │  │                 │ │
+│  └────────┬─────────┘  └──────┬────────┘  └─────────────────┘ │
+│           │                   │                                │
+│           │ xSem_Internet     │ xSem_FanUpdate                 │
+│           └───────────────────┘                                │
+│                                                                │
+└──────────────────────┬─────────────────────────────────────────┘
+                       │ MQTT 1883
+                       ▼
+              ┌───────────────────────┐
+              │ CoreIOT Cloud         │
+              │ app.coreiot.io        │
+              │ Rule Chain (Task 7)   │
+              │ Dashboard widgets     │
+              └───────────────────────┘
 ```
 
-### ⚙️ Cách Thiết Lập Rule Chain Trên CoreIOT
+### 3.2 Bảng task
 
-1. **Đăng nhập CoreIOT Dashboard** → https://app.coreiot.io
-2. **Tạo 2 Devices:**
-   - Device 1: "Phong_Khach_Sensor" (với cảm biến DHT20)
-   - Device 2: "Phong_Ngu_LED" (với LED NeoPixel)
+| Task                       | Stack | Prio | Vai trò                              |
+|----------------------------|-------|------|--------------------------------------|
+| `task_temp_humid`          | 2 KB  | 2    | Producer DHT20 mỗi 2 s               |
+| `task_button`              | 2 KB  | 2    | Polling button + debounce            |
+| `task_led_blink`           | 2 KB  | 1    | Consumer LED (Task 1)                |
+| `TaskNEOLED`               | 2 KB  | 1    | Consumer NeoPixel (Task 2)           |
+| `task_lcd_display`         | 4 KB  | 1    | Consumer LCD (Task 3)                |
+| `task_tinyml_inference`    | 8 KB  | 1    | TFLite Micro inference (Task 5)      |
+| `TaskCoreIOT`              | 4 KB  | 1    | MQTT publish + RPC (Task 6)          |
+| `TaskWebServer`            | 6 KB  | 1    | HTTP server + AP fallback (Task 4)   |
 
-3. **Vào mục "Rule Chains"** → Create New Rule Chain
+> Stack thực dùng (đo qua `uxTaskGetStackHighWaterMark`) thấp hơn stack cấp khoảng 30–65%,
+> chi tiết xem Mục 4.7 báo cáo.
 
-4. **Thêm Rule:**
+### 3.3 Cơ chế đồng bộ — ADR-03 và ADR-04
+
+Project tuân theo **phương án lai (hybrid)** để vừa đáp ứng yêu cầu Task 3 ("không dùng
+global variable"), vừa không phá vỡ code teammate cũ:
+
+1. **`SensorData` struct + mutex** (chuẩn cho code mới):
+   ```cpp
+   struct SensorData {
+       float temp;
+       float humi;
+       uint32_t timestamp_ms;
+       bool valid;
+   };
    ```
-   Input: Message from Device 1 telemetry
-   Filter: IF humidity > 60
-   Action: Send RPC to Device 2 with setColor(255,0,0)
-   ```
+   Truy cập qua `sensor_read()` / `sensor_write()` (atomic, bảo vệ bằng
+   `xMutexSensorData`). Task 1, 3, 5 dùng API này.
 
-5. **Deploy Rule Chain** → Bật trạng thái Active
+2. **Semaphore riêng cho mỗi consumer** (tránh stolen wake-up):
+   - `xBinarySemaphoreLed` cho Task 1
+   - `xBinarySemaphoreLcd` cho Task 3
+   - `xBinarySemaphoreTinyML` cho Task 5
+   - `xBinarySemaphoreTemp_Humi` cho Task 2 (legacy, dùng glob_humidity)
 
-6. **Test:** 
-   - Thay đổi độ ẩm ở Device 1
-   - Quan sát LED ở Device 2 thay đổi theo
+3. **Global cũ** (`glob_temperature`, `glob_humidity`) vẫn được giữ cho code Task 2,
+   4, 6 đã viết trước đó. Task DHT20 ghi cả hai (struct + global) để đảm bảo
+   compatibility.
 
-### 📊 Mô Tả Luồng Dữ Liệu Đầy Đủ
-
-```
-Device 1 Sensor Reading
-        │
-        ▼ (Every 2 seconds)
-  ┌──────────────┐
-  │ DHT20.read() │
-  │ humidity=65% │
-  └──────┬───────┘
-         │
-         ▼ (WiFi MQTT)
-  ┌──────────────────────────┐
-  │ MQTT Publish             │
-  │ Topic: telemetry         │
-  │ {"humidity": 65}         │
-  └──────┬───────────────────┘
-         │
-         ▼ (Internet)
-  ┌──────────────────────────┐
-  │ CoreIOT MQTT Broker      │
-  │ (app.coreiot.io:1883)    │
-  └──────┬───────────────────┘
-         │
-         ▼ (Rule Engine)
-  ┌──────────────────────────┐
-  │ Rule Processing:         │
-  │ IF humidity > 60% THEN   │
-  │   RPC → Device 2         │
-  └──────┬───────────────────┘
-         │
-         ▼ (RPC Command)
-  ┌──────────────────────────┐
-  │ Send RPC:                │
-  │ setColor(255, 0, 0)      │
-  └──────┬───────────────────┘
-         │
-         ▼ (Internet)
-  ┌──────────────────────────┐
-  │ Device 2 Receive RPC     │
-  │ callback() triggered     │
-  └──────┬───────────────────┘
-         │
-         ▼ (GPIO Output)
-  ┌──────────────────────────┐
-  │ NeoPixel.setColor(R,0,0) │
-  │ LED turns RED            │
-  └──────────────────────────┘
-```
-
-### 🔐 Lợi Ích Của Rule Chain
-
-✅ **Tự động hóa thông minh** - Không cần can thiệp thủ công  
-✅ **Giao tiếp giữa thiết bị** - Liên kết hành động của nhiều thiết bị  
-✅ **Tiết kiệm năng lượng** - Chỉ bật thiết bị khi cần  
-✅ **Theo dõi từ xa** - Kiểm soát toàn bộ hệ thống từ Cloud  
-✅ **Dễ mở rộng** - Có thể thêm nhiều rule mới mà không cần thay đổi firmware  
+4. **Biến `volatile`** cho kết quả TinyML (`glob_ml_label`, `glob_ml_confidence`):
+   Task 5 ghi, Task 6 đọc để publish lên MQTT. Sentinel `-1` để bỏ qua publish
+   trước khi inference đầu tiên xảy ra.
 
 ---
 
-## 📱 Cấu Hình WiFi & Access Token
+## 4. Chi tiết từng Task
 
-### 🔐 Vị Trí Cấu Hình
+### Task 1 — LED blink theo nhiệt độ
 
-Tất cả cài đặt WiFi và Access Token được lưu trong file: **`src/global.cpp`**
+LED đơn tại **GPIO 48**. Consumer của `xBinarySemaphoreLed`, đọc nhiệt độ qua
+`sensor_read()`, không tự đọc cảm biến.
 
-### 📍 Cách Nhập WiFi SSID
+Ba dải hành vi:
 
-**File**: `src/global.cpp` (dòng ~6)
+| Dải nhiệt độ          | Trạng thái  | Nửa chu kỳ | Nhịp/wake (2 s) |
+|-----------------------|-------------|------------|-----------------|
+| T < 25 °C             | COLD (chậm) | 1000 ms    | 1               |
+| 25 ≤ T < 35 °C        | NORMAL (vừa)| 500 ms     | 2               |
+| T ≥ 35 °C             | HOT (nhanh) | 150 ms     | 7               |
 
-```cpp
-String wifi_ssid = "Taolabochungmay";  // ← Thay đổi tên WiFi ở đây
-```
+**Pattern blocking burst**: mỗi lần thức dậy nháy N nhịp (≈2 s) thay vì 1 nhịp/wake,
+để dải HOT nhìn thấy rõ khác NORMAL bằng mắt thường.
 
-**Cách làm:**
-1. Mở file `src/global.cpp`
-2. Tìm dòng: `String wifi_ssid = "Taolabochungmay";`
-3. Thay `"Taolabochungmay"` bằng tên WiFi của bạn
-   - Ví dụ: `String wifi_ssid = "MyHomeWiFi";`
+### Task 2 — NeoPixel theo độ ẩm
 
-### 🔒 Cách Nhập WiFi Password
+NeoPixel WS2812 tại **GPIO 45**. Consumer của `xBinarySemaphoreTemp_Humi`, đọc
+`glob_humidity`.
 
-**File**: `src/global.cpp` (dòng ~7)
+| Độ ẩm        | Màu       |
+|--------------|-----------|
+| RH < 30%     | 🔴 ĐỎ     |
+| 30% ≤ RH < 60% | 🟡 VÀNG  |
+| RH ≥ 60%     | 🟢 XANH LÁ|
 
-```cpp
-String wifi_password = "Ronaldoisgoat";  // ← Thay đổi mật khẩu WiFi ở đây
-```
+### Task 3 — LCD hiển thị temp+humid
 
-**Cách làm:**
-1. Mở file `src/global.cpp`
-2. Tìm dòng: `String wifi_password = "Ronaldoisgoat";`
-3. Thay `"Ronaldoisgoat"` bằng mật khẩu WiFi của bạn
-   - Ví dụ: `String wifi_password = "MySecurePassword123";`
+LCD I2C 16×2 @ **0x21** (KHÔNG phải 0x27 mặc định của OhStem — đã verify bằng I2C
+scanner). Consumer của `xBinarySemaphoreLcd`, đọc qua `sensor_read()`.
 
-### 🔑 Cách Nhập CoreIOT Access Token
+**Hai màn hình xoay vòng** mỗi 4 s (2 chu kỳ producer):
+- **Screen Sensor**: `T:28.3 H:61.2%` / `STATUS: NORMAL`
+- **Screen Devices**: `DOOR:CLS FAN:OFF` / (placeholder)
 
-**File**: `src/global.cpp` (dòng ~8)
+**Ba trạng thái** (ưu tiên CRITICAL > NORMAL > WARNING):
 
-```cpp
-String CORE_IOT_TOKEN = "GEWwhpnyPx2CghKvofB8";  // ← Thay đổi token ở đây
-```
+| Trạng thái  | Điều kiện                                                          |
+|-------------|--------------------------------------------------------------------|
+| NORMAL      | 20 ≤ T ≤ 30 °C **và** 30% ≤ H ≤ 70%                                |
+| WARNING     | Ngoài NORMAL nhưng chưa chạm CRITICAL                              |
+| CRITICAL    | T < 15 hoặc T > 35 °C, **hoặc** H < 20% hoặc H > 85%               |
 
-**Cách lấy Access Token từ CoreIOT:**
-1. Đăng nhập vào [CoreIOT Dashboard](https://app.coreiot.io)
-2. Vào mục **"Devices"** → Chọn device của bạn
-3. Tab **"Details"** → Sao chép **"Access Token"**
-4. Dán token vào `src/global.cpp`
-   - Ví dụ: `String CORE_IOT_TOKEN = "YOUR_TOKEN_HERE";`
+**Bộ lọc EMA** (α = 0.3) làm mượt giá trị hiển thị; **partial update** so sánh từng
+dòng với buffer để tránh flicker khi gọi `lcd.clear()` mỗi chu kỳ.
 
-### ✅ Ví Dụ Cấu Hình Hoàn Chỉnh
+**Fail-safe**: khi `sensor_read()` trả về `false` hoặc `valid == false`, hiển thị
+`T:--.- H:--.-%` / `STATUS: SENS ERR`.
 
-```cpp
-// File: src/global.cpp
-#include "global.h"
+### Task 4 — Web Server (AP + STA mode)
 
-float glob_temperature = 0.0;
-float glob_humidity = 0.0;
+Webserver HTTP trên port 80, hoạt động ở chế độ **AP+STA đồng thời**:
 
-String wifi_ssid = "MyNetwork";              // 🔧 Nhập WiFi SSID
-String wifi_password = "MyPassword123";      // 🔧 Nhập WiFi Password  
-String CORE_IOT_TOKEN = "abc123def456...";   // 🔧 Nhập Access Token
+- **AP**: SSID `ESP32-Config`, pass `12345678`, IP `192.168.4.1` — luôn bật khi mất
+  STA, dùng để cấu hình WiFi tại chỗ.
+- **STA**: kết nối tới router gia đình bằng SSID/password đã nhập qua form.
 
-SemaphoreHandle_t xBinarySemaphoreInternet = xSemaphoreCreateBinary();
-```
+**Routes**:
 
-### 📡 MQTT Server Info
+| Route             | Method | Mô tả                                                |
+|-------------------|--------|------------------------------------------------------|
+| `/`               | GET    | Dashboard HTML/CSS/JS (glass theme, dark mode)       |
+| `/wifi`           | POST   | Nhận SSID + password, trigger STA reconnect          |
+| `/retry`          | GET    | Thử kết nối lại STA                                  |
+| `/fan?speed=N`    | GET    | Set tốc độ quạt 0–100%, ánh xạ → PWM 0–255           |
+| `/fan-state`      | GET    | JSON `{"speed": N}`                                  |
+| `/door?action=…`  | GET    | `open` / `close` / `toggle` cửa                      |
+| `/door-state`     | GET    | JSON `{"open": bool, "angle": N}`                    |
+| `/sensor-state`   | GET    | JSON `{"temperature": T, "humidity": H}`             |
 
-- **Broker**: `app.coreiot.io`
-- **Port**: `1883`
-- **Topics**:
-  - `v1/devices/me/telemetry` - Gửi dữ liệu cảm biến
-  - `v1/devices/me/rpc/request/+` - Nhận lệnh RPC
+Dashboard chứa **biểu đồ realtime** (HTML5 Canvas) cho nhiệt độ + độ ẩm, polling
+mỗi 1–2 s qua `fetch()`.
 
-### ⚠️ Lưu Ý Quan Trọng
+### Task 5 — TinyML anomaly detection (3-class)
 
-- ⚡ **Sau khi thay đổi thông tin**, bạn phải **biên dịch lại** (`platformio run`) và **upload** vào board
-- 🔐 **Không chia sẻ** Access Token với người khác
-- ✔️ **Kiểm tra** SSID/Password/Token đúng chính xác trước khi upload
-- 📱 Tên WiFi phải khớp **CHÍNH XÁC** (bao gồm cả chữ hoa/thường)
-
-## 💾 Cấu Trúc Project
+Pipeline end-to-end **3 phase**:
 
 ```
-YoloUNO_PlatformIO-LED_Blinky/
-├── src/
-│   ├── main.cpp                 # Entry point, khởi tạo tasks
-│   ├── global.cpp               # Biến global, thông tin WiFi/MQTT
-│   ├── mainServer.cpp           # WiFi setup (setupSTAMode)
-│   ├── task_led.cpp             # LED control task
-│   ├── task_temp_humid.cpp      # DHT20 sensor reading
-│   └── task_coreIOT.cpp         # MQTT & RPC callback
-├── include/
-│   ├── global.h                 # Khai báo biến global
-│   ├── mainServer.h             # Function prototypes
-│   ├── task_led.h
-│   ├── task_temp_humid.h
-│   └── task_coreIOT.h
-├── lib/
-│   └── DHT20/                   # Custom DHT20 library
+Phase A (Python)         Phase B (Python)              Phase C (ESP32)
+─────────────────        ───────────────────           ──────────────────
+generate_dataset.py  →   train_and_export.py     →    task_tinyml.cpp
+↓                        ↓                              ↓
+3160 mẫu CSV             MLP 2→16→8→3                   TFLite Micro
+synthetic                Keras → TFLite                 Inference @ 2 Hz
+(NORMAL/WARNING/         dynamic-range quant            Latency 11–13 ms
+CRITICAL)                3972 byte .tflite              Arena 8 KB → dùng ~2 KB
+                         → C header
+```
+
+**Kết quả thực nghiệm** (xem `notebooks/metrics.txt`):
+
+| Chỉ số                          | Giá trị     |
+|---------------------------------|-------------|
+| Test accuracy (Keras float)     | **99.53%**  |
+| Macro F1                        | **0.9945**  |
+| TFLite agreement vs Keras float | **1.0000**  |
+| Kích thước `.tflite`            | 3972 byte   |
+| Latency suy luận trên ESP32-S3  | 11–13 ms    |
+
+**Ngưỡng phân lớp** (script `scripts/generate_dataset.py`):
+
+| Lớp       | T (°C)               | H (%)                  |
+|-----------|----------------------|------------------------|
+| NORMAL    | 22–30                | 40–75                  |
+| WARNING   | 18–22 hoặc 30–35     | 25–40 hoặc 75–85       |
+| CRITICAL  | <18 hoặc >35         | <25 hoặc >85           |
+
+**Kiến trúc model**:
+```
+Input(2) → Normalization (adapted on X_train, embedded in graph)
+        → Dense(16, ReLU) → Dense(8, ReLU)
+        → Dense(3, softmax)
+```
+Tổng 216 params; vì Normalization layer được nhúng trong graph, ESP32 đẩy thẳng
+giá trị thô từ DHT20 vào tensor input — không cần chuẩn hóa thủ công, loại bỏ
+train-serve skew.
+
+Kết quả ML được publish lên Cloud cùng với telemetry:
+```json
+{
+  "fan_speed": 50,
+  "temperature": 28.3,
+  "humidity": 61.2,
+  "ml_label": 0,
+  "ml_state": "NORMAL",
+  "ml_confidence": 0.998
+}
+```
+
+### Task 6 — CoreIOT publish + RPC (MQTT)
+
+MQTT client kết nối tới `app.coreiot.io:1883` với token trong `CORE_IOT_TOKEN`.
+ClientId tạo từ MAC duy nhất (`ESP.getEfuseMac()`) để tránh ngắt kết nối tuần
+hoàn khi 2 kit chạy song song.
+
+**Telemetry uplink** (mỗi 2 s, hoặc khi `xBinarySemaphoreFanUpdate` được give):
+- Topic: `v1/devices/me/telemetry`
+- Payload: JSON như ví dụ Task 5 ở trên.
+
+**RPC downlink** (subscribe `v1/devices/me/rpc/request/+`):
+
+| Method   | Params         | Hành động                                          |
+|----------|----------------|----------------------------------------------------|
+| `setFan` | int (0–100)    | Set tốc độ quạt, xuất PWM ra `FAN_PIN`            |
+| `setDoor`| —              | Toggle servo 0° ↔ 90° (cửa đóng/mở)               |
+
+Sau khi xử lý RPC, hàm `updateAndPulish()` gọi `publishSensor()` ngay để đồng bộ
+trạng thái lên Dashboard.
+
+**Đồng bộ với Wi-Fi**: nếu mất STA, `xBinarySemaphoreInternet` được drain để
+TaskCoreIOT pause; khi STA quay lại, semaphore được give, MQTT reconnect.
+
+### Task 7 — Rule Chain trên CoreIOT (Cloud config)
+
+**Không phải code trên ESP32** — Task 7 là cấu hình rule chain trực tiếp trên
+web UI của CoreIOT, dạng kéo-thả các Rule Node.
+
+**Master + Slave chain**:
+- **Master**: nhận telemetry từ Device A, lọc theo điều kiện (ví dụ
+  `humidity > 60`), đổi originator sang Device B, đẩy sang Slave chain.
+- **Slave**: nhận message đã re-route, kiểm tra attribute, gọi RPC `setLed`
+  (hoặc `setColor`) tới Device B.
+
+Demo cụ thể: Device A đọc humidity > 60% → Cloud tự động kích RPC bật LED đỏ
+trên Device B.
+
+---
+
+## 5. Cấu trúc project
+
+```
+Project_Develop_IOT_Application/
+├── platformio.ini                  # PlatformIO config
 ├── boards/
-│   └── yolo_uno.json            # Board configuration
-└── platformio.ini               # PlatformIO project config
+│   └── yolo_uno.json               # Board definition
+├── lib/
+│   └── DHT20/                      # Local DHT20 driver
+├── include/
+│   ├── global.h                    # SensorData struct + mutex + 4 sem
+│   ├── task_temp_humid.h           # DHT20 producer
+│   ├── task_led_blink.h            # Task 1 — LED
+│   ├── task_neo_led.h              # Task 2 — NeoPixel
+│   ├── task_lcd.h                  # Task 3 — LCD
+│   ├── mainServer.h                # Task 4 — WebServer
+│   ├── task_tinyml.h               # Task 5 — TinyML
+│   ├── task_coreIOT.h              # Task 6 — MQTT
+│   ├── button.h                    # Button handler
+│   └── ml_model/
+│       └── dht_classifier_model.h  # 3972-byte TFLite (C array)
+├── src/
+│   ├── main.cpp                    # setup() + xTaskCreate x8
+│   ├── global.cpp                  # Định nghĩa biến + sensor_read/write
+│   ├── task_temp_humid.cpp
+│   ├── task_led_blink.cpp
+│   ├── task_neo_led.cpp
+│   ├── task_lcd.cpp
+│   ├── mainServer.cpp
+│   ├── task_tinyml.cpp
+│   ├── task_coreIOT.cpp
+│   └── button.cpp
+├── scripts/
+│   └── generate_dataset.py         # Phase A: sinh dataset synthetic
+├── notebooks/
+│   ├── train_and_export.py         # Phase B: train + quantize + export
+│   ├── metrics.txt                 # Kết quả accuracy, F1, confusion matrix
+│   └── plots/
+│       ├── dataset_scatter.png
+│       ├── training_curves.png
+│       └── confusion_matrix.png
+├── dataset/
+│   └── dht_anomaly_dataset.csv     # 3160 mẫu synthetic
+└── README.md
 ```
 
-## 🔌 Sơ Đồ Kết Nối
+---
 
-```
-YoloUNO (ESP32-S3)
-├── GPIO11 (SDA) ─── DHT20 (I2C data)
-├── GPIO12 (SCL) ─── DHT20 (I2C clock)
-├── GPIO48 ─────────── LED (Output)
-│
-├── WiFi (2.4GHz) ─── Router ─── Internet
-│
-└── MQTT ────────────── app.coreiot.io:1883
-```
+## 6. Cấu hình & nạp firmware
 
-## 📤 Dữ Liệu Gửi Lên Server
+### 6.1 Cài đặt WiFi và CoreIOT token
 
-### Telemetry (mỗi 5 giây)
-```json
-{
-  "temperature": 28.5,
-  "humidity": 65.3
-}
+File **`src/global.cpp`** (dòng ~9–11):
+
+```cpp
+String wifi_ssid     = "";                       // ← để trống nếu cấu hình qua AP
+String wifi_password = "";
+String CORE_IOT_TOKEN = "GEWwhpnyPx2CghKvofB8";  // ← token CoreIOT
 ```
 
-## 📥 Lệnh RPC Từ Server
+Hai cách cấu hình WiFi:
 
-### Điều khiển LED
-```json
-{
-  "method": "setValue",
-  "params": {"led": 1}
-}
-```
+1. **Sửa cứng**: nhập SSID/password trực tiếp vào `global.cpp` rồi build lại.
+2. **Cấu hình tại chỗ (khuyến nghị)**: để trống, ESP32 sẽ tự bật AP
+   `ESP32-Config` (pass `12345678`). Kết nối điện thoại/laptop vào AP này, mở
+   trình duyệt `http://192.168.4.1`, nhập SSID/password vào form `/wifi`.
 
-Response:
-```json
-{"result": "ok"}
-```
+### 6.2 Lấy CoreIOT token
 
-### Lấy giá trị cảm biến
-```json
-{
-  "method": "getSensor",
-  "params": {}
-}
-```
+1. Đăng nhập [app.coreiot.io](https://app.coreiot.io)
+2. Devices → chọn device → Tab "Details" → Copy "Access Token"
+3. Paste vào `CORE_IOT_TOKEN`
 
-Response:
-```json
-{
-  "temperature": 28.5,
-  "humidity": 65.3
-}
-```
+### 6.3 Build & upload (PlatformIO)
 
-## 🛠️ Biên Dịch & Upload
-
-### Build
 ```bash
+# Build
 platformio run
-```
 
-### Upload
-```bash
+# Upload
 platformio run --target upload
-```
 
-### Monitor Serial Output
-```bash
+# Serial monitor
 platformio device monitor
 ```
 
-## 📊 Serial Monitor Output Mẫu
+### 6.4 Pipeline TinyML (tùy chọn — model đã có sẵn)
 
+```bash
+# Phase A: sinh dataset (chạy từ project root)
+python3 scripts/generate_dataset.py
+# → dataset/dht_anomaly_dataset.csv, notebooks/plots/dataset_scatter.png
+
+# Phase B: train + quantize + export C header
+python3 notebooks/train_and_export.py
+# → include/ml_model/dht_classifier_model.h, notebooks/metrics.txt, plots/
+
+# Phase C: rebuild firmware (đã có header mới)
+platformio run --target upload
 ```
-Starting WiFi connection...
-Connecting to: Taolabochungmay
-.....
-WiFi connected successfully!
-IP address: 192.168.1.100
-Signal strength (RSSI): -65
 
-Temperature: 28.5 °C, Humidity: 65.3 %
-Attempting MQTT connection...
-connected to server
-Data published{"temperature":28.5,"humidity":65.3}
-```
+> Phải dùng **TensorFlow 2.x** (đã test với 2.21.0) để export đúng schema
+> TFLite mà thư viện `tanakamasayuki/TensorFlowLite_ESP32@1.0.0` hỗ trợ.
 
-## ⚙️ Cấu Hình PlatformIO
+---
+
+## 7. PlatformIO config
 
 ```ini
 [env:yolo_uno]
@@ -625,64 +446,95 @@ monitor_speed = 115200
 build_flags =
     -D ARDUINO_USB_MODE=1
     -D ARDUINO_USB_CDC_ON_BOOT=1
+
+lib_deps =
+    ArduinoHttpClient
+    ArduinoJson
+    DHT20
+    LCD
+    PubSubClient@2.8.0
+    Thingsboard@0.13.0
+    adafruit/Adafruit NeoPixel @ ^1.15.4
+    madhephaestus/ESP32Servo @ ^1.1.8
+    tanakamasayuki/TensorFlowLite_ESP32@1.0.0
 ```
 
-## 🐛 Troubleshooting
+---
 
-### I2C Error: "i2cRead returned Error -1"
-- ✅ Kiểm tra kết nối DHT20: VDD (3.3V), SDA (GPIO11), GND, SCL (GPIO12)
-- ✅ Thêm pull-up resistor 10kΩ trên SDA/SCL nếu cần
+## 8. Hiệu năng & tài nguyên
 
-### WiFi không kết nối
-- ✅ Kiểm tra SSID & password trong global.cpp
-- ✅ Xem Serial Monitor để biết lỗi WiFi status code
+Đo trên kit Yolo UNO (ESP32-S3, 4 MB Flash, 8 MB PSRAM) chạy đủ 8 task đồng thời
+trong 10 phút (xem chi tiết Mục 4.7 báo cáo PDF):
 
-### MQTT Connection Failed
-- ✅ Kiểm tra token CoreIOT: `CORE_IOT_TOKEN`
-- ✅ Đảm bảo thiết bị đã được thêm vào CoreIOT dashboard
+| Chỉ số                             | Giá trị        | So với ngân sách      |
+|------------------------------------|----------------|-----------------------|
+| Flash usage                        | ≈ 1.1 MB       | 27% của 4 MB          |
+| RAM usage (stack + heap)           | ≈ 78 KB        | 15% của 512 KB        |
+| Tổng stack 8 task (cấp phát)       | 32 KB          | —                     |
+| TFLite tensor arena                | 8 KB (cấp) / 2 KB (dùng) | —          |
+| PSRAM                              | Không dùng     | 0% của 8 MB           |
+| Latency wake-up consumer           | < 1 ms         | < 5 ms (target)       |
+| Latency inference TinyML           | 11–13 ms       | < 50 ms (target)      |
+| MQTT publish round-trip            | 80–150 ms      | —                     |
+| RPC command response               | 100–200 ms     | < 500 ms (target)     |
 
-## 👨‍💻 Tác Giả
+---
 
-Dự án được phát triển cho khóa HK252 - Phát Triển Ứng Dụng IoT
+## 9. Sự cố đã gặp & cách xử lý
 
-## 📄 License
+| Sự cố                                       | Triệu chứng                              | Nguyên nhân                                          | Khắc phục                                                                        |
+|---------------------------------------------|------------------------------------------|------------------------------------------------------|----------------------------------------------------------------------------------|
+| Stack canary watchpoint (Task 1)            | Reset ngay sau `Serial.printf`           | Stack 2 KB không đủ cho buffer của `printf`          | Tăng stack lên 4 KB                                                              |
+| Stolen wake-up giữa Task 1, 3, 5            | Consumer bỏ lỡ sự kiện                   | Dùng chung 1 binary semaphore cho nhiều consumer     | Cấp semaphore riêng cho từng consumer (Cách 1 của ADR-04)                        |
+| TFLite Micro schema mismatch                | `model schema mismatch`                  | TF version khác với phiên bản thư viện hỗ trợ        | Downgrade TF training về version tương thích                                     |
+| MQTT publish giá trị rác `ml_label = -1`    | Dashboard hiển thị UNKNOWN trong 2 s đầu | Task 6 publish trước khi Task 5 hoàn thành infer     | Sentinel `-1` + check `if (glob_ml_label >= 0)` trong `publishSensor()`          |
+| MQTT disconnect tuần hoàn `rc=-2`           | 2 kit chạy song song bị ngắt liên tục    | `clientId` trùng                                     | Tạo `clientId` từ `ESP.getEfuseMac()`                                            |
+| Tensor arena ban đầu thiếu                  | `AllocateTensors()` trả `kTfLiteError`   | Arena 4 KB không đủ overhead nội tại của TFLite Micro | Tăng lên 8 KB; log `arena_used_bytes()` báo dùng ~2 KB                           |
+| WebServer treo khi mất WiFi                 | Hệ thống đóng băng, response chậm        | Hàm blocking trong PubSubClient                      | Drain semaphore `xBinarySemaphoreInternet` để MQTT tự pause khi mất mạng         |
 
-MIT License - Tự do sử dụng và phát triển
+---
 
+## 10. Hạn chế & hướng phát triển
 
-1. [Install PlatformIO](https://platformio.org)
-2. Create PlatformIO project and configure a platform option in [platformio.ini](https://docs.platformio.org/page/projectconf.html) file:
+### Hạn chế hiện tại
 
-## Stable version
+- **Dataset Task 5 là synthetic** — chưa thu thập dữ liệu thực dài hạn từ DHT20.
+  Accuracy 99.53% phản ánh khớp với logic gán nhãn synthetic, chưa khẳng định
+  khả năng tổng quát hóa.
+- **Mô hình chỉ dùng 2 feature tức thời** (T, H) — không khai thác temporal
+  feature (ΔT, ΔH) vốn quan trọng để phát hiện cháy, rò rỉ khí.
+- **MQTT chưa mã hóa** (port 1883, không TLS) — payload và token đi qua mạng
+  ở plain text.
+- **Dashboard HTML nhúng cứng** trong `mainServer.cpp` dưới dạng `String html`
+  — khó bảo trì CSS/JS, tốn Flash.
+- **Ngưỡng phân loại hard-code** ở cả Task 3 (LCD) và Task 5 (training script)
+  — phải rebuild khi đổi.
 
-See `platform` [documentation](https://docs.platformio.org/en/latest/projectconf/sections/env/options/platform/platform.html#projectconf-env-platform) for details.
+### Hướng phát triển
 
-```ini
-[env:stable]
-; recommended to pin to a version, see https://github.com/platformio/platform-espressif32/releases
-; platform = espressif32 @ ^6.0.1
-platform = espressif32
-board = yolo_uno
-framework = arduino
-monitor_speed = 115200
+- TLS/SSL cho MQTT, OAuth/JWT cho WebServer.
+- Thu thập dữ liệu real từ DHT20 trong nhiều tuần, fine-tune model trên hỗn hợp
+  synthetic + real.
+- Bổ sung feature ΔT, ΔH hoặc nâng lên 1D-CNN trên cửa sổ 5–10 mẫu.
+- Đưa threshold thành CoreIOT attribute để cấu hình từ xa.
+- Tách Dashboard HTML ra file riêng, dùng SPIFFS hoặc LittleFS.
+- Tích hợp ESP-NOW / BLE Mesh để Rule Chain hoạt động ngay cả khi mất internet.
 
-build_flags =
-    -D ARDUINO_USB_MODE=1
-    -D ARDUINO_USB_CDC_ON_BOOT=1
+---
 
-## Development version
+## 11. Tham khảo
 
-```ini
-[env:development]
-platform = https://github.com/platformio/platform-espressif32.git
-board = yolo_uno
-framework = arduino
-monitor_speed = 115200
-build_flags =
-    -D ARDUINO_USB_MODE=1
-    -D ARDUINO_USB_CDC_ON_BOOT=1
+- ThingsBoard documentation: <https://thingsboard.io/docs/>
+- CoreIOT documentation: <https://coreiot.io/docs/>
+- TensorFlow Lite for Microcontrollers: <https://www.tensorflow.org/lite/microcontrollers>
+- OhStem YoloUNO: <https://ohstem.vn/product/yolo-uno/>
+- OhStem DHT20: <https://docs.ohstem.vn/en/latest/module/cam-bien/dht20.html>
+- OhStem LCD 1602 I2C: <https://docs.ohstem.vn/en/latest/module/hien-thi/lcd1602.html>
+- Random Nerd Tutorials — ESP32 Web Server: <https://randomnerdtutorials.com/esp32-web-server-beginners-guide/>
 
-    
-# Configuration
+---
 
-Please navigate to [documentation](https://docs.platformio.org/page/platforms/espressif32.html).
+## License
+
+MIT — tự do sử dụng và phát triển. Báo cáo PDF + source code là sản phẩm BTL,
+mọi tái sử dụng học thuật nên trích nguồn nhóm.
