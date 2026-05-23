@@ -26,7 +26,7 @@ void reconnect(){
             Serial.print("failed, rc=");
             Serial.print(client.state());
             Serial.println(" try again in 5 seconds");
-            delay(5000);
+            vTaskDelay(pdMS_TO_TICKS(5000));
         }
     }
 }
@@ -37,6 +37,15 @@ void publishSensor(float temperature, float humidity, int fan_speed){
     doc["fan_speed"] = fan_speed;
     doc["temperature"] = temperature;
     doc["humidity"] = humidity;
+
+    // ML telemetry (Task 5). Skip until first inference has happened.
+    if (glob_ml_label >= 0) {
+        doc["ml_label"]      = (int) glob_ml_label;
+        doc["ml_state"]      = (glob_ml_label == 0) ? "NORMAL"
+                             : (glob_ml_label == 1) ? "WARNING"
+                             : "CRITICAL";
+        doc["ml_confidence"] = (float) glob_ml_confidence;
+    }
 
     char buffer[256];
     size_t n = serializeJson(doc, buffer);

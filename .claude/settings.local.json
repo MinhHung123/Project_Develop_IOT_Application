@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-Command pio -ErrorAction SilentlyContinue; Get-ChildItem \"$env:USERPROFILE\\\\.platformio\" -ErrorAction SilentlyContinue | Select-Object -First 10; where.exe pio 2>$null)",
+      "PowerShell(Get-ChildItem \"$env:APPDATA\\\\Python\" -ErrorAction SilentlyContinue | Select-Object Name; Get-ChildItem \"$env:LOCALAPPDATA\\\\Programs\" -ErrorAction SilentlyContinue | Select-Object Name)",
+      "Bash(ls /mnt/c/Users/ 2>/dev/null || ls ~/)",
+      "Read(//mnt/c/**)",
+      "Bash(python3 -c \"import os; print\\(os.listdir\\('/mnt/c/Users'\\)\\)\")",
+      "Bash(python3 --version 2>/dev/null || python --version 2>/dev/null; which python3 python pip3 pip 2>/dev/null; ls /usr/local/bin/pio* 2>/dev/null)",
+      "Read(//usr/local/**)",
+      "Bash(pio run *)",
+      "PowerShell(\\(Get-Command pio -ErrorAction SilentlyContinue\\).Source; $env:PATH -split \";\" | Select-String -Pattern \"python|platformio|pio\" -SimpleMatch)",
+      "PowerShell(Get-ChildItem \"$env:USERPROFILE\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" -ErrorAction SilentlyContinue; Get-ChildItem \"C:\\\\Users\\\\Khôi Nguyên\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe\" -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Khôi Nguyên\\\\.platformio\" -ErrorAction SilentlyContinue | Select-Object Name; Get-ChildItem \"$env:USERPROFILE\\\\.platformio\" -ErrorAction SilentlyContinue | Select-Object Name)",
+      "PowerShell(cmd /c \"where pio\" 2>&1)",
+      "PowerShell(cmd /c \"where platformio\" 2>&1)",
+      "PowerShell(cmd /c \"dir \"\"C:\\\\Users\\\\Kh�i Nguy�n\\\\AppData\\\\Local\\\\Programs\"\"\" 2>&1)",
+      "PowerShell(cmd /c \"dir /s /b \"\"C:\\\\Users\\\\Kh�i Nguy�n\\\\AppData\\\\Local\\\\Programs\\\\Antigravity\"\" | findstr /i pio\" 2>&1)",
+      "PowerShell(cmd /c \"dir /b \"\"C:\\\\Users\\\\Kh�i Nguy�n\\\\AppData\\\\Local\\\\Programs\\\\Antigravity\"\"\" 2>&1)",
+      "PowerShell(cmd /c \"dir /b /ad \"\"C:\\\\Users\\\\Kh�i Nguy�n\"\"\" 2>&1)",
+      "PowerShell(python -m platformio run --help 2>&1)",
+      "PowerShell($pioExt = \"C:\\\\Users\\\\Khôi Nguyên\\\\.vscode\\\\extensions\\\\platformio.platformio-ide-3.3.4-win32-x64\"; cmd /c \"dir /b \"\"$pioExt\\\\penv\\\\Scripts\"\" 2>&1\" | Select-String \"pio\")",
+      "PowerShell(cmd /c \"dir /b \"\"C:\\\\Users\\\\Kh�i Nguy�n\\\\.vscode\\\\extensions\\\\platformio.platformio-ide-3.3.4-win32-x64\"\"\")"
+    ]
+  }
+}
